@@ -1,4 +1,5 @@
 #include "uniform.h"
+#include <glm/gtc/type_ptr.hpp>
 
 Uniform::Uniform(GLuint id) : id(id) {}
 Uniform::~Uniform() {}
@@ -26,3 +27,5 @@ void Uniform::f(GLfloat v0, GLfloat v1) { glUniform2f(id, v0, v1); }
 void Uniform::f(GLfloat v0, GLfloat v1, GLfloat v2) { glUniform3f(id, v0, v1, v2); }
 
 void Uniform::f(GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3) { glUniform4f(id, v0, v1, v2, v3); }
+
+void Uniform::m(glm::mat4 &m) { glUniformMatrix4fv(id, 1, false, glm::value_ptr(m)); }

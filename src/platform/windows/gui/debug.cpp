@@ -1,4 +1,6 @@
 #include <imgui.h>
+#include <chrono>
+#include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 #include <vector>
 #include "../../../cpu/gte/gte.h"
@@ -172,6 +174,7 @@ void gteRegistersWindow(GTE &gte) {
 }
 
 void modelsWindow(System *sys) {
+    static auto start = std::chrono::high_resolution_clock::now();
     static std::unique_ptr<Texture> texture;
     if (!modelsWindowEnabled) {
         if (texture) {
@@ -184,24 +187,24 @@ void modelsWindow(System *sys) {
     ImGui::BeginChild("Models", ImVec2(0, -ImGui::GetItemsLineHeightWithSpacing()), false);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
 
-    auto &list = sys->cpu->gte.possibleModelAddress;
-    std::sort(list.begin(), list.end());
-    for (int i = list.size() - 1; i > 0;) {
-        if (list[i] - list[i - 1] < 8) {
-            list.erase(list.begin() + i);
-            i--;
-        } else {
-            i--;
-        }
-    }
+    auto &list = sys->cpu->gte.models;
+    // std::sort(list.begin(), list.end());
+    // for (int i = list.size() - 1; i > 0;) {
+    //     if (list[i] - list[i - 1] < 8) {
+    //         list.erase(list.begin() + i);
+    //         i--;
+    //     } else {
+    //         i--;
+    //     }
+    // }
 
     int meshToRender = -1;
     ImGui::Columns(2);
-    ImGuiListClipper clipper((int)sys->cpu->gte.possibleModelAddress.size());
+    ImGuiListClipper clipper((int)sys->cpu->gte.models.size());
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-            auto address = sys->cpu->gte.possibleModelAddress[i];
-            bool nodeOpen = ImGui::TreeNode((void *)(intptr_t)i, "%d. 0x%08x", i, address);
+            // auto address = sys->cpu->gte.possibleModelAddress[i];
+            bool nodeOpen = ImGui::TreeNode((void *)(intptr_t)i, "%d. 0x%08x", i, list[i].vertices.size());
             bool isHovered = ImGui::IsItemHovered();
 
             if (isHovered) {
@@ -216,7 +219,7 @@ void modelsWindow(System *sys) {
     ImGui::NextColumn();
     if (meshToRender != -1) {
         if (!texture) {
-            texture = std::make_unique<Texture>(320, 240);
+            texture = std::make_unique<Texture>(640, 480);
         }
         Framebuffer framebuffer(texture->get());
 
@@ -228,17 +231,71 @@ void modelsWindow(System *sys) {
 
         shader.use();
 
-        std::array<float, 9> data = {
-            -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-        };
-        Buffer buffer(data.size() * sizeof(float));
-        buffer.update(data.size() * sizeof(float), data.data());
+        auto &mesh = list[meshToRender];
 
-        shader.getAttrib("position").pointer(3, GL_FLOAT, sizeof(float) * 3, 0);
+        struct Vertex {
+            glm::vec3 pos;
+            glm::vec3 normal;
+        };
+        std::vector<Vertex> raw;
+
+        auto scale = 20.f;
+
+        auto calculateNormal = [](glm::vec3 v[3]) -> glm::vec3 {
+            glm::vec3 d1, d2;
+            d1.x = v[1].x - v[0].x;
+            d1.y = v[1].y - v[0].y;
+            d1.z = v[1].z - v[0].z;
+
+            d2.x = v[2].x - v[0].x;
+            d2.y = v[2].y - v[0].y;
+            d2.z = v[2].z - v[0].z;
+
+            glm::vec3 cross_product = glm::cross(d1, d2);
+            return glm::normalize(cross_product);
+        };
+
+        for (auto v : mesh.vertices) {
+            Vertex p;
+            p.pos[0] = -(((float)v.x) / INT16_MAX) * scale;
+            p.pos[1] = (((float)v.z) / INT16_MAX) * scale;
+            p.pos[2] = (((float)v.y) / INT16_MAX) * scale;
+            raw.push_back(p);
+        }
+
+        for (int i = 0; i < raw.size(); i += 3) {
+            glm::vec3 v[3] = {raw[i].pos, raw[i + 1].pos, raw[i + 2].pos};
+            auto normal = calculateNormal(v);
+
+            raw[i].normal = normal;
+            raw[i + 1].normal = normal;
+            raw[i + 2].normal = normal;
+        }
+
+        Buffer buffer(raw.size() * sizeof(Vertex));
+        buffer.update(raw.size() * sizeof(Vertex), raw.data());
+
+        shader.getAttrib("position").pointer(3, GL_FLOAT, sizeof(Vertex), 0);
+        shader.getAttrib("normal").pointer(3, GL_FLOAT, sizeof(Vertex), sizeof(glm::vec3));
 
         framebuffer.bind();
         glViewport(0, 0, texture->getWidth(), texture->getHeight());
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        auto now = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration_cast<std::chrono::duration<float>>(now - start).count();
+
+        glm::mat4 model = glm::rotate(glm::mat4(1.f), time * glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f));
+        glm::mat4 proj = glm::perspective(glm::radians(45.f), (float)texture->getWidth() / texture->getHeight(), 0.01f, 10.f);
+        glm::mat4 view = glm::lookAt(glm::vec3(1.2f, 1.2f, 1.2f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        glm::mat4 mvp = proj * view * model;
+
+        shader.getUniform("mvp").m(mvp);
+
+        glClearColor(0.f, 0.f, 0.f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glDrawArrays(GL_TRIANGLES, 0, mesh.vertices.size());
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         auto size = ImGui::GetContentRegionAvail();

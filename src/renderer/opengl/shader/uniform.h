@@ -1,5 +1,6 @@
 #pragma once
 #include <opengl.h>
+#include <glm/glm.hpp>
 #include <tuple>
 
 class Uniform {
@@ -22,4 +23,5 @@ class Uniform {
     void f(GLfloat v0, GLfloat v1);
     void f(GLfloat v0, GLfloat v1, GLfloat v2);
     void f(GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+    void m(glm::mat4 &m);
 };
