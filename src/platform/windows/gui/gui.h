@@ -10,6 +10,7 @@ void renderImgui(System* sys);
 extern bool showGui;
 extern bool gteRegistersEnabled;
 extern bool ioLogEnabled;
+extern bool modelsWindowEnabled;
 extern bool gteLogEnabled;
 extern bool gpuLogEnabled;
 extern bool singleFrame;

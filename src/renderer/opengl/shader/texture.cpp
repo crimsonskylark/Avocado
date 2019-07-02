@@ -1,5 +1,7 @@
 #include "texture.h"
 
+Texture::Texture(int width, int height) : Texture(width, height, GL_RGB, GL_RGB, GL_UNSIGNED_BYTE, false) {}
+
 Texture::Texture(int width, int height, GLint internalFormat, GLint dataFormat, GLenum type, bool filter)
     : width(width), height(height), internalFormat(internalFormat), dataFormat(dataFormat), type(type), success(false) {
     GLint lastTexture;

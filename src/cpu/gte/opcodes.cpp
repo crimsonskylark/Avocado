@@ -134,6 +134,9 @@ int64_t GTE::multiplyMatrixByVectorRTP(Matrix m, Vector<int16_t> v, Vector<int32
 }
 
 void GTE::ncds(int n) {
+    if (captureData) {
+        models.back().colors.push_back(gte::Vector<uint8_t>{rgbc.read(0), rgbc.read(1), rgbc.read(2)});
+    }
     multiplyMatrixByVector(light, v[n]);
     multiplyMatrixByVector(color, toVector(ir), backgroundColor);
 
@@ -162,6 +165,9 @@ void GTE::nct() {
 }
 
 void GTE::nccs(int n) {
+    if (captureData) {
+        models.back().colors.push_back(gte::Vector<uint8_t>{rgbc.read(0), rgbc.read(1), rgbc.read(2)});
+    }
     multiplyMatrixByVector(light, v[n]);
     multiplyMatrixByVector(color, toVector(ir), backgroundColor);
     multiplyVectors(Vector<int16_t>(R, G, B), toVector(ir));
@@ -169,12 +175,18 @@ void GTE::nccs(int n) {
 }
 
 void GTE::cc() {
+    if (captureData) {
+        models.back().colors.push_back(gte::Vector<uint8_t>{rgbc.read(0), rgbc.read(1), rgbc.read(2)});
+    }
     multiplyMatrixByVector(color, toVector(ir), backgroundColor);
     multiplyVectors(Vector<int16_t>(R, G, B), toVector(ir));
     pushColor();
 }
 
 void GTE::cdp() {
+    if (captureData) {
+        models.back().colors.push_back(gte::Vector<uint8_t>{rgbc.read(0), rgbc.read(1), rgbc.read(2)});
+    }
     multiplyMatrixByVector(color, toVector(ir), backgroundColor);
 
     auto prevIr = toVector(ir);
@@ -346,6 +358,9 @@ void GTE::pushColor(uint32_t r, uint32_t g, uint32_t b) {
  * translate it (TR) and apply perspective transformation.
  */
 void GTE::rtps(int n, bool setMAC0) {
+    if (captureData) {
+        models.back().vertices.push_back(v[n]);
+    }
     int64_t mac3 = multiplyMatrixByVectorRTP(rotation, v[n], translation);
 
     pushScreenZ((int32_t)(mac3 >> 12));

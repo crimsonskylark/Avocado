@@ -12,6 +12,7 @@ class Texture {
     bool success;
 
    public:
+    Texture(int width, int height);
     Texture(int width, int height, GLint internalFormat, GLint dataFormat, GLenum type, bool filter);
     ~Texture();
 

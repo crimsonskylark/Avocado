@@ -348,6 +348,9 @@ void System::emulateFrame() {
     ioLogList.clear();
 #endif
     cpu->gte.log.clear();
+    cpu->gte.models.clear();
+    cpu->gte.models.push_back({});
+    cpu->gte.possibleModelAddress.clear();
     gpu->gpuLogList.clear();
 
     gpu->prevVram = gpu->vram;

@@ -171,6 +171,9 @@ void GTE::write(uint8_t n, uint32_t d) {
         case 31: break;
 
         case 32:
+            if (captureData) {
+                models.push_back({});
+            }
             rotation[0][1] = d >> 16;
             rotation[0][0] = d;
             break;

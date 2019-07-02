@@ -5,6 +5,9 @@
 #include "debugger/debugger.h"
 #include "gui.h"
 #include "imgui/imgui_memory_editor.h"
+#include "renderer/opengl/shader/buffer.h"
+#include "renderer/opengl/shader/framebuffer.h"
+#include "renderer/opengl/shader/program.h"
 #include "renderer/opengl/shader/texture.h"
 #include "utils/file.h"
 #include "utils/string.h"
@@ -168,6 +171,88 @@ void gteRegistersWindow(GTE &gte) {
     ImGui::End();
 }
 
+void modelsWindow(System *sys) {
+    static std::unique_ptr<Texture> texture;
+    if (!modelsWindowEnabled) {
+        if (texture) {
+            texture.reset();
+        }
+        return;
+    }
+    ImGui::Begin("Models", &modelsWindowEnabled);
+
+    ImGui::BeginChild("Models", ImVec2(0, -ImGui::GetItemsLineHeightWithSpacing()), false);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+
+    auto &list = sys->cpu->gte.possibleModelAddress;
+    std::sort(list.begin(), list.end());
+    for (int i = list.size() - 1; i > 0;) {
+        if (list[i] - list[i - 1] < 8) {
+            list.erase(list.begin() + i);
+            i--;
+        } else {
+            i--;
+        }
+    }
+
+    int meshToRender = -1;
+    ImGui::Columns(2);
+    ImGuiListClipper clipper((int)sys->cpu->gte.possibleModelAddress.size());
+    while (clipper.Step()) {
+        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+            auto address = sys->cpu->gte.possibleModelAddress[i];
+            bool nodeOpen = ImGui::TreeNode((void *)(intptr_t)i, "%d. 0x%08x", i, address);
+            bool isHovered = ImGui::IsItemHovered();
+
+            if (isHovered) {
+                meshToRender = i;
+            }
+
+            if (nodeOpen) {
+                ImGui::TreePop();
+            }
+        }
+    }
+    ImGui::NextColumn();
+    if (meshToRender != -1) {
+        if (!texture) {
+            texture = std::make_unique<Texture>(320, 240);
+        }
+        Framebuffer framebuffer(texture->get());
+
+        Program shader("data/shader/preview");
+        if (!shader.load()) {
+            printf("[GL] Cannot load preview shader: %s\n", shader.getError().c_str());
+            return;
+        }
+
+        shader.use();
+
+        std::array<float, 9> data = {
+            -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        };
+        Buffer buffer(data.size() * sizeof(float));
+        buffer.update(data.size() * sizeof(float), data.data());
+
+        shader.getAttrib("position").pointer(3, GL_FLOAT, sizeof(float) * 3, 0);
+
+        framebuffer.bind();
+        glViewport(0, 0, texture->getWidth(), texture->getHeight());
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        auto size = ImGui::GetContentRegionAvail();
+        float aspect = static_cast<float>(texture->getHeight()) / static_cast<float>(texture->getWidth());
+        size.y = size.x * aspect;
+        ImGui::Image((ImTextureID)texture->get(), size);
+    }
+
+    ImGui::Columns(1);
+    ImGui::PopStyleVar();
+    ImGui::EndChild();
+    ImGui::End();
+}
+
 void gteLogWindow(System *sys) {
     if (!gteLogEnabled) {
         return;
@@ -176,6 +261,79 @@ void gteLogWindow(System *sys) {
     static bool searchActive = false;
     bool filterActive = strlen(filterBuffer) > 0;
     ImGui::Begin("GTE Log", &gteLogEnabled, ImVec2(300, 400));
+
+    ImGui::Checkbox("Capture 3d data", &sys->cpu->gte.captureData);
+    if (sys->cpu->gte.captureData) {
+        ImGui::SameLine();
+        if (ImGui::Button("Dump")) {
+            auto isCw = [](gte::Vector<int16_t> v[3]) {
+                glm::vec3 a = glm::vec3(v[0].x / 65535.f, v[0].y / 65535.f, v[0].z / 65535.f);
+                glm::vec3 b = glm::vec3(v[1].x / 65535.f, v[1].y / 65535.f, v[1].z / 65535.f);
+                glm::vec3 c = glm::vec3(v[2].x / 65535.f, v[2].y / 65535.f, v[2].z / 65535.f);
+
+                glm::vec3 ab = b - a;
+                glm::vec3 ac = c - a;
+                glm::vec3 n = glm::cross(ab, ac);
+
+                return n.z < 0;
+            };
+
+            for (int m = 0; m < sys->cpu->gte.models.size(); m++) {
+                auto model = sys->cpu->gte.models[m];
+                if (model.vertices.empty()) {
+                    continue;
+                }
+
+                auto filename = string_format("dump%d.obj", m);
+                FILE *fout = fopen(filename.c_str(), "wb");
+
+                if (!fout) {
+                    printf("Cannot open %s for saving\n", filename.c_str());
+                    continue;
+                }
+                bool isQuad = (model.vertices.size() % 4) == 0;
+                float scale = 1024.f;
+
+                auto writeVertice = [&](int i) {
+                    auto v = model.vertices[i];
+                    float r = 1.f;
+                    float g = 1.f;
+                    float b = 1.f;
+
+                    if (i < model.colors.size()) {
+                        auto c = model.colors[i];
+                        r = c.r / 255.f;
+                        g = c.g / 255.f;
+                        b = c.b / 255.f;
+                    }
+
+                    fprintf(fout, "v %g %g %g %g %g %g\n", v.x / scale, v.y / scale, v.z / scale, r, g, b);
+                };
+                if (isQuad) {
+                    for (int i = 0; i < model.vertices.size(); i += 4) {
+                        writeVertice(i + 0);
+                        writeVertice(i + 1);
+                        writeVertice(i + 2);
+
+                        writeVertice(i + 1);
+                        writeVertice(i + 2);
+                        writeVertice(i + 3);
+                    }
+                } else {
+                    for (int i = 0; i < model.vertices.size(); i++) {
+                        writeVertice(i);
+                    }
+                }
+                for (int i = 0; i < model.vertices.size(); i += 3) {
+                    gte::Vector<int16_t> v[3] = {model.vertices[i], model.vertices[i + 1], model.vertices[i + 2]};
+                    auto cw = isCw(v);
+                    fprintf(fout, "f %d %d %d\n", i + 1, i + ((cw) ? 3 : 2), i + ((cw) ? 2 : 3));
+                }
+                fclose(fout);
+                printf("Dumped 3d model to %s\n", filename.c_str());
+            }
+        }
+    }
 
     ImGui::BeginChild("GTE Log", ImVec2(0, -ImGui::GetItemsLineHeightWithSpacing()), false, ImGuiWindowFlags_HorizontalScrollbar);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 #include "command.h"
 #include "device/device.h"
@@ -100,6 +101,15 @@ struct GTE {
     };
 
     std::vector<GTE_ENTRY> log;
+
+    struct Model {
+        std::vector<gte::Vector<int16_t>> vertices;
+        std::vector<gte::Vector<uint8_t>> colors;
+    };
+
+    bool captureData = true;
+    std::vector<Model> models;
+    std::vector<uint32_t> possibleModelAddress;
 
    private:
     int busToken;

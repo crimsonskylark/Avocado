@@ -13,6 +13,7 @@ void openFileWindow();
 
 void gteRegistersWindow(GTE& gte);
 void ioLogWindow(System* sys);
+void modelsWindow(System* sys);
 void gteLogWindow(System* sys);
 void gpuLogWindow(System* sys);
 void ioWindow(System* sys);
@@ -28,6 +29,7 @@ bool showGui = true;
 
 bool gteRegistersEnabled = false;
 bool ioLogEnabled = false;
+bool modelsWindowEnabled = false;
 bool gteLogEnabled = false;
 bool gpuLogEnabled = false;
 bool singleFrame = false;
@@ -107,6 +109,7 @@ void renderImgui(System* sys) {
 #ifdef ENABLE_IO_LOG
                 ImGui::MenuItem("IO log", nullptr, &ioLogEnabled);
 #endif
+                ImGui::MenuItem("Models", nullptr, &modelsWindowEnabled);
                 ImGui::MenuItem("GTE log", nullptr, &gteLogEnabled);
                 ImGui::MenuItem("GPU log", nullptr, &gpuLogEnabled);
 
@@ -144,6 +147,7 @@ void renderImgui(System* sys) {
         // Debug
         if (gteRegistersEnabled) gteRegistersWindow(sys->cpu->gte);
         if (ioLogEnabled) ioLogWindow(sys);
+        if (modelsWindowEnabled) modelsWindow(sys);
         if (gteLogEnabled) gteLogWindow(sys);
         if (gpuLogEnabled) gpuLogWindow(sys);
         if (showIo) ioWindow(sys);

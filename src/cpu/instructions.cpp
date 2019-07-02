@@ -880,6 +880,9 @@ void op_lwc2(CPU *cpu, Opcode i) {
 
     assert(i.rt < 64);
     auto data = cpu->sys->readMemory32(addr);
+    if (i.rd == 0) {
+        cpu->gte.possibleModelAddress.push_back(addr);
+    }
     cpu->gte.write(i.rt, data);
 }
 
