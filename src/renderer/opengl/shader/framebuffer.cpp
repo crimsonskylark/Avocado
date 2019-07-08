@@ -3,13 +3,17 @@
 
 GLuint Framebuffer::currentId = 0;
 
-Framebuffer::Framebuffer(GLuint colorTexture) {
+Framebuffer::Framebuffer(GLuint colorTexture, std::optional<GLuint> depthTexture) {
     GLint currentFramebuffer;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
 
     glGenFramebuffers(1, &id);
     glBindFramebuffer(GL_FRAMEBUFFER, id);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+
+    if (depthTexture) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, *depthTexture, 0);
+    }
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         printf("[GL] Framebuffer is not complete!\n");

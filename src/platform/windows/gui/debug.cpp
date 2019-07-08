@@ -1,6 +1,7 @@
 #include <imgui.h>
 #include <chrono>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
 #include <vector>
 #include "../../../cpu/gte/gte.h"
@@ -176,16 +177,24 @@ void gteRegistersWindow(GTE &gte) {
 void modelsWindow(System *sys) {
     static auto start = std::chrono::high_resolution_clock::now();
     static std::unique_ptr<Texture> texture;
+    static std::unique_ptr<Texture> depth;
+    static float scale = 20.f;
+    static glm::vec3 camera = glm::vec3(0.f, -1.f, -2.5f);
+    static bool invertY = false;
     if (!modelsWindowEnabled) {
         if (texture) {
             texture.reset();
         }
+        if (depth) {
+            depth.reset();
+        }
         return;
     }
     ImGui::Begin("Models", &modelsWindowEnabled);
-
-    ImGui::BeginChild("Models", ImVec2(0, -ImGui::GetItemsLineHeightWithSpacing()), false);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+
+    ImGui::Columns(2);
+    ImGui::BeginChild("List", ImVec2(0, -ImGui::GetItemsLineHeightWithSpacing()), false);
 
     auto &list = sys->cpu->gte.models;
     // std::sort(list.begin(), list.end());
@@ -199,7 +208,6 @@ void modelsWindow(System *sys) {
     // }
 
     int meshToRender = -1;
-    ImGui::Columns(2);
     ImGuiListClipper clipper((int)sys->cpu->gte.models.size());
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
@@ -212,16 +220,25 @@ void modelsWindow(System *sys) {
             }
 
             if (nodeOpen) {
+                meshToRender = i;
                 ImGui::TreePop();
             }
         }
     }
+    ImGui::EndChild();
     ImGui::NextColumn();
+    ImGui::SliderFloat("Scale", &scale, 1.f, 100.f);
+    ImGui::SliderFloat3("Camera", glm::value_ptr(camera), -5.f, 5.f, "%.1f");
+    ImGui::Checkbox("Invert Y", &invertY);
+
     if (meshToRender != -1) {
         if (!texture) {
             texture = std::make_unique<Texture>(640, 480);
         }
-        Framebuffer framebuffer(texture->get());
+        if (!depth) {
+            depth = std::make_unique<Texture>(640, 480, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, false);
+        }
+        Framebuffer framebuffer(texture->get(), depth->get());
 
         Program shader("data/shader/preview");
         if (!shader.load()) {
@@ -239,8 +256,6 @@ void modelsWindow(System *sys) {
         };
         std::vector<Vertex> raw;
 
-        auto scale = 20.f;
-
         auto calculateNormal = [](glm::vec3 v[3]) -> glm::vec3 {
             glm::vec3 d1, d2;
             d1.x = v[1].x - v[0].x;
@@ -257,9 +272,11 @@ void modelsWindow(System *sys) {
 
         for (auto v : mesh.vertices) {
             Vertex p;
-            p.pos[0] = -(((float)v.x) / INT16_MAX) * scale;
-            p.pos[1] = (((float)v.z) / INT16_MAX) * scale;
-            p.pos[2] = (((float)v.y) / INT16_MAX) * scale;
+            p.pos[0] = (((float)v.x) / INT16_MAX) * scale;
+            p.pos[1] = (((float)v.y) / INT16_MAX) * scale;
+            p.pos[2] = (((float)v.z) / INT16_MAX) * scale;
+
+            if (invertY) p.pos[1] *= -1.f;
             raw.push_back(p);
         }
 
@@ -284,19 +301,24 @@ void modelsWindow(System *sys) {
         auto now = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration_cast<std::chrono::duration<float>>(now - start).count();
 
-        glm::mat4 model = glm::rotate(glm::mat4(1.f), time * glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f));
+        glm::mat4 model = glm::rotate(glm::mat4(1.f), time * glm::radians(45.f), glm::vec3(0.f, 1.f, 0.f));
         glm::mat4 proj = glm::perspective(glm::radians(45.f), (float)texture->getWidth() / texture->getHeight(), 0.01f, 10.f);
-        glm::mat4 view = glm::lookAt(glm::vec3(1.2f, 1.2f, 1.2f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::mat4 view = glm::lookAt(camera, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
         glm::mat4 mvp = proj * view * model;
 
         shader.getUniform("mvp").m(mvp);
 
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
         glClearColor(0.f, 0.f, 0.f, 1.f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearDepth(1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glDrawArrays(GL_TRIANGLES, 0, mesh.vertices.size());
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glDisable(GL_DEPTH_TEST);
 
         auto size = ImGui::GetContentRegionAvail();
         float aspect = static_cast<float>(texture->getHeight()) / static_cast<float>(texture->getWidth());
@@ -306,7 +328,6 @@ void modelsWindow(System *sys) {
 
     ImGui::Columns(1);
     ImGui::PopStyleVar();
-    ImGui::EndChild();
     ImGui::End();
 }
 
